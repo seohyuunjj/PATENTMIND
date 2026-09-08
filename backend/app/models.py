@@ -1,0 +1,113 @@
+import uuid
+from datetime import datetime, date
+
+from sqlalchemy import (
+    Boolean,
+    Date,
+    DateTime,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm import Mapped, mapped_column, relationship
+
+from .database import Base
+
+
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+class User(Base):
+    __tablename__ = "users"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    email: Mapped[str] = mapped_column(String, unique=True, nullable=False, index=True)
+    password_hash: Mapped[str] = mapped_column(String, nullable=False)
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    role: Mapped[str] = mapped_column(String, nullable=False, default="engineer")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    searches: Mapped[list["Search"]] = relationship(back_populates="user")
+
+
+class Search(Base):
+    __tablename__ = "searches"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True)
+    user_id: Mapped[str] = mapped_column(ForeignKey("users.id"), nullable=False)
+    query: Mapped[str] = mapped_column(Text, nullable=False)
+    period: Mapped[str] = mapped_column(String, nullable=False, default="최근 5년")
+    period_from: Mapped[date | None] = mapped_column(Date, nullable=True)
+    period_to: Mapped[date | None] = mapped_column(Date, nullable=True)
+    exclude_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    countries: Mapped[list[str]] = mapped_column(
+        ARRAY(String), nullable=False, default=lambda: ["KR", "US", "EP", "JP", "CN"]
+    )
+    company: Mapped[str] = mapped_column(String, default="전체 기업")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="processing")
+    progress: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    step: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship(back_populates="searches")
+    results: Mapped[list["SearchResult"]] = relationship(back_populates="search")
+
+
+class Patent(Base):
+    __tablename__ = "patents"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    application_no: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
+    title: Mapped[str] = mapped_column(String, nullable=False)
+    assignee: Mapped[str] = mapped_column(String, nullable=False)
+    filing_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    countries: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
+    independent_claim: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # 정량 5대 지표 산식(§3.2)의 원본 입력값 — 점수 자체는 서비스 계층에서 매번 계산한다
+    family_size: Mapped[int] = mapped_column(Integer, nullable=False, default=1)
+    citation_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    claim_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    has_dispute: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    legal_status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+
+    source: Mapped[str | None] = mapped_column(String, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime | None] = mapped_column(DateTime, onupdate=datetime.utcnow, nullable=True)
+
+    results: Mapped[list["SearchResult"]] = relationship(back_populates="patent")
+
+
+class SearchResult(Base):
+    __tablename__ = "search_results"
+    __table_args__ = (UniqueConstraint("search_id", "patent_id", name="uq_search_patent"),)
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    search_id: Mapped[str] = mapped_column(ForeignKey("searches.id"), nullable=False)
+    patent_id: Mapped[str] = mapped_column(ForeignKey("patents.id"), nullable=False)
+
+    tier: Mapped[str] = mapped_column(String, nullable=False)  # Core | Major | Reference | Noise
+    overlap_level: Mapped[str | None] = mapped_column(String, nullable=True)  # 상|중|하 (LLM, 목업)
+    design_difficulty_level: Mapped[str | None] = mapped_column(String, nullable=True)  # 상|중|하 (LLM, 목업)
+
+    confirm_needed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    search: Mapped["Search"] = relationship(back_populates="results")
+    patent: Mapped["Patent"] = relationship(back_populates="results")
+
+
+class SyncLog(Base):
+    __tablename__ = "sync_logs"
+
+    id: Mapped[str] = mapped_column(String, primary_key=True, default=_uuid)
+    source: Mapped[str] = mapped_column(String, nullable=False)  # KIPRIS | Google Patents | USPTO
+    synced_at: Mapped[datetime] = mapped_column(DateTime, nullable=False, default=datetime.utcnow)
+    status: Mapped[str] = mapped_column(String, nullable=False)  # 완료 | 진행 중 | 실패
+    records: Mapped[int | None] = mapped_column(Integer, nullable=True)
