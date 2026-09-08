@@ -7,11 +7,13 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
+    TypeDecorator,
     UniqueConstraint,
 )
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.dialects.postgresql import ARRAY as PG_ARRAY
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
@@ -19,6 +21,25 @@ from .database import Base
 
 def _uuid() -> str:
     return str(uuid.uuid4())
+
+
+class StringArray(TypeDecorator):
+    """PostgreSQL에서는 네이티브 text[]로, 그 외(SQLite 등 로컬 개발/테스트)에서는
+    JSON 배열로 저장하는 이식성 있는 배열 타입. 운영 배포는 PostgreSQL을 사용한다."""
+
+    impl = JSON
+    cache_ok = True
+
+    def load_dialect_impl(self, dialect):
+        if dialect.name == "postgresql":
+            return dialect.type_descriptor(PG_ARRAY(String))
+        return dialect.type_descriptor(JSON())
+
+    def process_bind_param(self, value, dialect):
+        return value
+
+    def process_result_value(self, value, dialect):
+        return value
 
 
 class User(Base):
@@ -45,7 +66,7 @@ class Search(Base):
     period_to: Mapped[date | None] = mapped_column(Date, nullable=True)
     exclude_expired: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
     countries: Mapped[list[str]] = mapped_column(
-        ARRAY(String), nullable=False, default=lambda: ["KR", "US", "EP", "JP", "CN"]
+        StringArray, nullable=False, default=lambda: ["KR", "US", "EP", "JP", "CN"]
     )
     company: Mapped[str] = mapped_column(String, default="전체 기업")
     status: Mapped[str] = mapped_column(String, nullable=False, default="processing")
@@ -65,7 +86,7 @@ class Patent(Base):
     title: Mapped[str] = mapped_column(String, nullable=False)
     assignee: Mapped[str] = mapped_column(String, nullable=False)
     filing_year: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    countries: Mapped[list[str] | None] = mapped_column(ARRAY(String), nullable=True)
+    countries: Mapped[list[str] | None] = mapped_column(StringArray, nullable=True)
     abstract: Mapped[str | None] = mapped_column(Text, nullable=True)
     independent_claim: Mapped[str | None] = mapped_column(Text, nullable=True)
 
