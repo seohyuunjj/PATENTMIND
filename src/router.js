@@ -10,6 +10,7 @@ const routes = [
   { path: '/trends', name: 'trends', meta: { auth: true } },
   { path: '/my', name: 'my', meta: { auth: true } },
   { path: '/admin', name: 'admin', meta: { auth: true, admin: true } },
+  { path: '/help', name: 'help', meta: { auth: true } },
   { path: '/', redirect: '/dashboard' },
 ]
 const router = createRouter({ history: createWebHistory(), routes })
