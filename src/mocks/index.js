@@ -1,4 +1,4 @@
-export const mockUser = { id: 'u-001', name: '김도윤', email: 'engineer@patentmind.ai', role: 'admin' }
+export const mockUser = { id: 'u-001', name: 'Seo', email: 'engineer@patentmind.ai', role: 'admin' }
 
 export const mockSearches = [
   { id: 'PM-2408', query: '고체 전해질 기반 전고체 배터리의 열화 억제 기술', status: '완료', createdAt: '2026.08.28', count: 48, core: 6, major: 13 },
